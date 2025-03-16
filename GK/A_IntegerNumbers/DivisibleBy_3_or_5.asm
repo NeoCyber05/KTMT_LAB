@@ -1,3 +1,6 @@
+#Enter a positive integer N from the keyboard,
+#print all the positive integers less than N that are divisible by 3 or 5.
+
 .data
 	mess: .asciz "Enter a positive integer: "
 	newline: .asciz "\n"
