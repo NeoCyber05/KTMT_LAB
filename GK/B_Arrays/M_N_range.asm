@@ -52,7 +52,7 @@ loop:
 	sw t4, 0(t3) # lưu giá trị mảng tại địa chỉ t3 ( 4i+A )
 	
 	ble t4,a2,next # a[i] <= m  
-	bge t4,a3,next # a[i] > n
+	bge t4,a3,next # a[i] >= n
 	addi t1,t1,1   # TM đk thì count+1
 next:
 	addi t0,t0,1
