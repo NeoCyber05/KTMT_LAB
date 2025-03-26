@@ -1,6 +1,10 @@
+#2.Enter a positive integer N from the keyboard, print out the Fibonacci numbers less than N.
+
 .data
 prompt: .asciz "Enter a positive integer N: "
+error_msg: .asciz "Please enter a positive integer.\n"
 newline: .asciz "\n"
+
 .text
 .global _start
 
@@ -10,15 +14,19 @@ _start:
     la a0, prompt         # load address of prompt message
     ecall
 
+input_loop:
     # Read integer N from user
     li a7, 5              # syscall for read integer
     ecall
     mv t0, a0            # store input value (N) in t0
 
+    # Check if the input is a positive integer (N > 0)
+    blez t0, print_error  # if t0 <= 0, print error and ask for input again
+
     # Initialize Fibonacci numbers (f0 = 0, f1 = 1)
     li t1, 0              # f0 = 0
     li t2, 1              # f1 = 1
-
+ble
 fib_loop:
     # Print Fibonacci number t1
     li a7, 1              # syscall for print integer
@@ -41,3 +49,12 @@ fib_loop:
     # Exit program
     li a7, 10             # syscall for exit
     ecall
+
+print_error:
+    # Print error message and ask for input again
+    li a7, 4              # syscall for print string
+    la a0, error_msg      # load address of error message
+    ecall
+
+    # Ask for input again
+    j input_loop          # jump to input loop to ask for input again
