@@ -1,94 +1,138 @@
 .data
-prompt: .asciz "Enter a positive integer N: "
-lucky_msg: .asciz "The number is a lucky number.\n"
-not_lucky_msg: .asciz "The number is not a lucky number.\n"
-error_msg: .asciz "Please enter a positive integer.\n"
-newline: .asciz "\n"
+prompt:      .asciz "Enter a positive integer: "
+error_msg:   .asciz "Error: Input must be a positive integer. Please try again.\n" # Thông báo lỗi rõ hơn
+lucky_msg:   .asciz " is a lucky number.\n"
+not_lucky_msg: .asciz " is not a lucky number.\n"
+newline:     .asciz "\n"
 
 .text
-.global _start
-
-_start:
-    # Print prompt message
-    li a7, 4              # syscall for print string
-    la a0, prompt         # load address of prompt message
-    ecall
-
+main:
+# --- Vòng lặp nhập liệu và kiểm tra ---
 input_loop:
-    # Read integer N from user
-    li a7, 5              # syscall for read integer
+    # Print prompt
+    li a7, 4          # Service code for print_string
+    la a0, prompt     # Address of string to print
     ecall
-    mv t0, a0            # store N in t0
 
-    # Check if the input is a positive integer (N > 0)
-    blez t0, print_error  # if N <= 0, print error and ask for input again
-
-    # Find the number of digits in N
-    mv t1, t0            # copy N to t1
-    li t2, 0              # initialize digit count to 0
-    li t3, 10             # load 10 into t3 for division
-
-count_digits:
-    div t1, t1, t3        # divide t1 by 10 and store the result in t1
-    addi t2, t2, 1        # increment digit count
-    bnez t1, count_digits # continue if t1 > 0
-
-    # Split the number into two halves
-    li t4, 0              # counter for left half digits
-    li s1, 0              # sum of left half digits
-    li s2, 0              # sum of right half digits
-    mv t5, t2             # total digit count
-
-    # Divide the total digits by 2 using s7 to store 2
-    li s7, 2              # s7 = 2
-    div t5, t5, s7        # divide total digits by 2
-
-    # If the total digits count is odd, we add one digit to the right side
-    # So the right half will have one more digit than the left half
-    bnez t2, handle_odd_digits
-
-handle_odd_digits:
-    li t6, 0              # counter for right half
-
-split_number:
-    rem s10, t0, t3        # get the last digit (N % 10)
-    div t0, t0, t3        # divide N by 10 to reduce it
-
-    # Update left or right half sum
-    bge t4, t5, add_right # if in right half, add to right sum
-    add s1, s1, s10        # add to left half sum
-    j continue_split
-
-add_right:
-    add s2, s2, s10        # add to right half sum
-
-continue_split:
-    addi t4, t4, 1        # increment counter
-    bnez t0, split_number # continue splitting
-
-    # Compare sums of left and right halves
-    beq s1, s2, print_lucky # if sums are equal, it's a lucky number
-
-    # If not lucky, print message and exit
-print_not_lucky:
-    li a7, 4              # syscall for print string
-    la a0, not_lucky_msg  # load address of "not lucky" message
+    # Read integer N
+    li a7, 5          # Service code for read_int
     ecall
-    li a7, 10             # syscall for exit
+    mv s0, a0         # Store N in s0
+
+    # Check if N > 0
+    blez s0, input_error # Branch if N <= 0. Nếu không, tiếp tục xử lý
+
+    # Nếu đến đây, N là số nguyên dương, thoát khỏi vòng lặp nhập liệu
+    # và đi tới phần logic chính
+
+    # --- Logic kiểm tra số may mắn ---
+    # Count the number of digits in N
+    mv t0, s0         # Use t0 as a temporary copy of N
+    li t1, 0          # t1 = digit count (d)
+    li t2, 10         # Constant 10 for division/modulo
+count_loop:
+    beqz t0, count_done # If t0 is 0, we are done counting
+    div t0, t0, t2    # N = N / 10
+    addi t1, t1, 1    # Increment digit count
+    j count_loop
+count_done:
+    # s1 will hold the digit count (d)
+    mv s1, t1
+
+    # Handle single digit numbers (always lucky)
+    li t0, 1
+    beq s1, t0, print_lucky # If d == 1, it's lucky
+
+    # Calculate half length (d / 2)
+    li t3, 2
+    div s2, s1, t3    # s2 = half_len = d / 2
+
+    # Calculate 10^half_len (divisor)
+    li s3, 1          # s3 = divisor = 1 (starts at 10^0)
+    mv t0, s2         # t0 = counter = half_len
+power_loop:
+    beqz t0, power_done # If counter is 0, done
+    mul s3, s3, t2    # divisor = divisor * 10
+    addi t0, t0, -1   # Decrement counter
+    j power_loop
+power_done:
+    # s3 now holds 10^half_len
+
+    # Separate the number into left and right halves
+    rem s4, s0, s3    # s4 = right_half = N % divisor
+    div s5, s0, s3    # s5 = left_half = N / divisor
+
+    # Calculate sum of digits for the right half
+    mv a0, s4         # Pass right_half to sum_digits
+    call sum_digits
+    mv s6, a0         # Store right_sum in s6
+
+    # Calculate sum of digits for the left half
+    mv a0, s5         # Pass left_half to sum_digits
+    call sum_digits
+    mv s7, a0         # Store left_sum in s7
+
+    # Compare sums
+    beq s6, s7, print_lucky
+    # If sums are not equal, it's not lucky
+    j print_not_lucky
+
+# --- Subroutine to calculate sum of digits ---
+# Input: a0 = number
+# Output: a0 = sum of digits
+# Uses temporary registers: t0, t1, t2, t3
+sum_digits:
+    addi sp, sp, -4   # Allocate space on stack
+    sw ra, 0(sp)      # Save return address
+
+    li t0, 0          # t0 = sum = 0
+    mv t1, a0         # t1 = current number part
+    li t2, 10         # Constant 10
+sum_loop:
+    beqz t1, sum_done # If number part is 0, done
+    rem t3, t1, t2    # t3 = last digit = number % 10
+    add t0, t0, t3    # sum = sum + digit
+    div t1, t1, t2    # number = number / 10
+    j sum_loop
+sum_done:
+    mv a0, t0         # Return sum in a0
+
+    lw ra, 0(sp)      # Restore return address
+    addi sp, sp, 4    # Deallocate stack space
+    ret               # Return (jr ra)
+
+# --- Output Sections ---
+input_error:
+    # Print error message
+    li a7, 4
+    la a0, error_msg
     ecall
+    # Jump back to ask for input again
+    j input_loop      # Quay lại đầu vòng lặp nhập liệu
 
 print_lucky:
-    li a7, 4              # syscall for print string
-    la a0, lucky_msg      # load address of "lucky" message
+    # Print the original number
+    li a7, 1
+    mv a0, s0
     ecall
-    li a7, 10             # syscall for exit
+    # Print the "is lucky" message
+    li a7, 4
+    la a0, lucky_msg
     ecall
+    j exit
 
-print_error:
-    # Print error message and ask for input again
-    li a7, 4              # syscall for print string
-    la a0, error_msg      # load address of error message
+print_not_lucky:
+    # Print the original number
+    li a7, 1
+    mv a0, s0
     ecall
+    # Print the "is not lucky" message
+    li a7, 4
+    la a0, not_lucky_msg
+    ecall
+    j exit
 
-    # Ask for input again
-    j input_loop          # jump to input loop to ask for input again
+# --- Exit Program ---
+exit:
+    li a7, 10         # Service code for exit
+    ecall
